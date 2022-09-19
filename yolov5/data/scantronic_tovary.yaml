@@ -1,0 +1,18 @@
+# COCO stype custom dataset configs
+# Example usage: python train.py --data scantronic7k.yaml
+# parent
+# ├── yolov5
+# └── datasets
+#     └── scantronic7k  ← here
+
+# Train/val/test sets as 1) dir: path/to/imgs, 2) file: path/to/imgs.txt, or 3) list: [path/to/imgs1, path/to/imgs2, ..]
+path: ../../datasets/DATA2/Scans_2020-2021_2021-03-22/samples_dev
+train: train_sample # train images (relative to 'path')
+val: train_sample # val images (relative to 'path')
+test: test_sample# test images (optional)
+
+# Classes
+nc: 23 # number of classes
+names: ["020910","0209900000","080810","320810","3209","4410","4411",
+        "4412","59","60","61","62","6205200000","63","6401","6402",
+        "6403","6404","6405","6406","851610","8516101100","8516108000"]
