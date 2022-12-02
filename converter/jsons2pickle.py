@@ -44,8 +44,15 @@ def xyxy2xywhn(x, w=640, h=640, clip=False, eps=0.0):
 
 
 def parse_annotations(path_to_json, width=None, heigh=None):
-    with open(path_to_json, 'r') as stream:
-        data = json.load(stream)
+
+    try:
+        with open(path_to_json, 'r') as stream:
+            data = json.load(stream)
+    except:
+        path_to_json = path_to_json.replace('.json', '_predict.json')
+        with open(path_to_json, 'r', encoding='UTF-8') as stream:
+            data = json.load(stream)
+
     boxes = []
     labels = []
     for ann in data:
@@ -103,7 +110,7 @@ class Pickler:
             if not os.path.exists(annotation):
                 return None, 0  # raise FileNotFoundError
             else:
-                json_files = [Path(file).stem for file in os.listdir(annotation)]
+                json_files = [str(Path(file).stem).strip('_predict') for file in os.listdir(annotation)]
 
             config_path = os.path.join(self.root_folder, train_name, self.cfg_filename)
             if not os.path.exists(config_path):
