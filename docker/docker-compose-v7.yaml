@@ -5,7 +5,6 @@ services:
     image: ultralytics/yolov5:v6.1
     volumes:
       - ../yolov7:/usr/src/app
-      # - ../dev:/usr/src/app/dev
       - ../converter:/usr/src/converter
       - D:\ProjectsCurrent\model-sandbox-data:/usr/src/data
     working_dir: /usr/src
@@ -18,7 +17,7 @@ services:
     #           count: 1
     #           capabilities: [gpu]
     restart: "no"
-    command: bash -c "pip3 install websocket-client && python3 app/train.py"
+    command: bash -c "pip3 install websocket-client && python3 app/train_conveer.py"
     # command: ["sleep", "infinity"]
     # command: ["python3", "-m", "yolov5_refactor.train", "--weights yolov5_refactor/yolov5s_mod.pt"]
     # command: bash -c "python3 -m app.train --weights ..."
