@@ -57,6 +57,8 @@ def set_logger(name=__name__):
 
 
 logger = logging.getLogger(__name__)
+
+
 # logger = set_logger(__name__)
 
 
@@ -216,7 +218,6 @@ def train(hyp, opt, device, tb_writer=None, unmatched_configs=None):
     logger.info(f"Scaled weight_decay = {hyp['weight_decay']}")
 
     pg0, pg1, pg2 = optimizer_parameter_groups(model)
-
     if opt.adam:
         optimizer = optim.Adam(pg0, lr=hyp['lr0'], betas=(hyp['momentum'], 0.999))  # adjust beta1 to momentum
     else:
@@ -608,22 +609,27 @@ def parse_args():
 
 if __name__ == '__main__':
     opt = parse_args()
-    # path_to_data = '/usr/src/converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899'
-    path_to_data = '../converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899'
+    path_to_data = '/usr/src/converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899'
+    # path_to_data = '../converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899'
     loggerName = path_to_data.split(os.path.sep)[-1]
     logger.name = loggerName
 
     from conveer.utils.opt_checker import check_opts
+
     opt, unmatched_configs = check_opts(
         opt=opt, custom_cfg=f'{path_to_data}/train_settings.yaml', data_path=path_to_data)
     unmatched_configs['path_to_data'] = path_to_data
 
-    # Set DDP variables
+    # ==================================================================================================================
+    # === Set DDP variables
+    # ==================================================================================================================
     opt.world_size = int(os.environ['WORLD_SIZE']) if 'WORLD_SIZE' in os.environ else 1
     opt.global_rank = int(os.environ['RANK']) if 'RANK' in os.environ else -1
     set_logging(opt.global_rank)
 
-    # Resume
+    # ==================================================================================================================
+    # === Resume
+    # ==================================================================================================================
     wandb_run = check_wandb_resume(opt)
     if opt.resume and not wandb_run:  # resume an interrupted run
         ckpt = opt.resume if isinstance(opt.resume, str) else get_latest_run()  # specified or most recent path
@@ -648,7 +654,9 @@ if __name__ == '__main__':
     opt, unmatched_configs = check_opts(
         opt=opt, custom_cfg=unmatched_configs, data_path=unmatched_configs['path_to_data'])
 
-    # DDP mode
+    # ==================================================================================================================
+    # === DDP mode
+    # ==================================================================================================================
     opt.total_batch_size = opt.batch_size
     device = select_device(opt.device, batch_size=opt.batch_size)
     if opt.local_rank != -1:
@@ -659,15 +667,18 @@ if __name__ == '__main__':
         assert opt.batch_size % opt.world_size == 0, '--batch-size must be multiple of CUDA device count'
         opt.batch_size = opt.total_batch_size // opt.world_size
 
-    # Hyperparameters
+    # ==================================================================================================================
+    # === Hyper parameters
+    # ==================================================================================================================
     with open(opt.hyp) as f:
-        # hyp = yaml.load(f, Loader=yaml.SafeLoader)  # load hyps
         hyp = argparse.Namespace(**yaml.load(f, Loader=yaml.SafeLoader))
-        hyp, unmatched_configs = check_opts(
-            opt=hyp, custom_cfg=unmatched_configs, data_path=path_to_data)
-        hyp = vars(hyp)
+    hyp, unmatched_configs = check_opts(
+        opt=hyp, custom_cfg=unmatched_configs, data_path=path_to_data)
+    hyp = vars(hyp)
 
-    # Train
+    # ==================================================================================================================
+    # === Train
+    # ==================================================================================================================
     logger.info(opt)
 
     tb_writer = None  # init loggers
@@ -676,8 +687,3 @@ if __name__ == '__main__':
         logger.info(f"{prefix}Start with 'tensorboard --logdir {opt.project}', view at http://localhost:6006/")
         tb_writer = SummaryWriter(opt.save_dir)  # Tensorboard
     train(hyp, opt, device, tb_writer, unmatched_configs)
-    # if not opt.evolve:
-    #     simple_hyps(opt, hyp, device, unmatched_configs)
-    # else:  # Evolve hyperparameters (optional)
-    #     evolve_hyps_train(opt, device, unmatched_configs)
-
