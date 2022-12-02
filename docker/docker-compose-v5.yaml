@@ -1,7 +1,7 @@
 version: "3"
 services:
   conveer_test:
-    container_name: conveer_test
+    container_name: conveer_yolov5
     image: ultralytics/yolov5:v6.1
     volumes:
       - ../yolov5:/usr/src/app
