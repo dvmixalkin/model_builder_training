@@ -2,11 +2,11 @@ version: "3"
 services:
   conveer_test:
     container_name: conveer_yolov7
-    image: ultralytics/yolov5:v6.1
+    image: ultralytics/yolov5:latest
     volumes:
       - ../yolov7:/usr/src/app
       - ../converter:/usr/src/converter
-      - D:\ProjectsCurrent\model-sandbox-data:/usr/src/data
+      - ../converter/model_forge:/usr/src/data
     working_dir: /usr/src
     shm_size: 8gb
     # deploy:

@@ -5,9 +5,8 @@ services:
     image: ultralytics/yolov5:v6.1
     volumes:
       - ../yolov5:/usr/src/app
-      # - ../dev:/usr/src/app/dev
       - ../converter:/usr/src/converter
-      - D:\ProjectsCurrent\model-sandbox-data:/usr/src/data
+      - ../converter/model_forge:/usr/src/data
     working_dir: /usr/src
     shm_size: 8gb
     # deploy:
