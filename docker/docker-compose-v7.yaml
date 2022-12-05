@@ -9,15 +9,15 @@ services:
       - ../converter/model_forge:/usr/src/data
     working_dir: /usr/src
     shm_size: 8gb
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    deploy:
+     resources:
+       reservations:
+         devices:
+           - driver: nvidia
+             count: 1
+             capabilities: [gpu]
     restart: "no"
-    command: bash -c "pip3 install websocket-client && python3 app/train_conveer.py"
-    # command: ["sleep", "infinity"]
+#    command: bash -c "pip3 install websocket-client # && python3 app/train_conveer.py"
+    command: ["sleep", "infinity"]
     # command: ["python3", "-m", "yolov5_refactor.train", "--weights yolov5_refactor/yolov5s_mod.pt"]
     # command: bash -c "python3 -m app.train --weights ..."
