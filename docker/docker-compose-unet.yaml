@@ -1,0 +1,22 @@
+version: "3"
+services:
+  conveer_test:
+    container_name: conveer_unet
+    image: image!!!
+    volumes:
+      - ../unet:/usr/src/app
+      - ../converter:/usr/src/converter
+      - ../converter/model_forge:/usr/src/data
+    working_dir: /usr/src
+    shm_size: 8gb
+    deploy:
+     resources:
+       reservations:
+         devices:
+           - driver: nvidia
+             count: 1
+             capabilities: [gpu]
+    restart: "no"
+    # command: bash -c "pip3 install websocket-client # && python3 app/train_conveer.py"
+    command: ["sleep", "infinity"]
+    
