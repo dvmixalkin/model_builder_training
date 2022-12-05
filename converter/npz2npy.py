@@ -28,7 +28,7 @@ def process_image(object_, channels):
     try:
         for channel in channels:
             channel_data = data.get(channel)
-            channel_data = channel_data / channel_data.max()
+            channel_data = (channel_data / channel_data.max()) * 255
             data_array.append(channel_data)
     except:
         raise NotImplementedError
