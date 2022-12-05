@@ -16,7 +16,7 @@ all_configs = {
             'key': 'epochs',
             'type': int,
             'default': 300,
-            'help': '?'
+            'help': 'num epochs'
         },
         {
             'key': 'batch-size',
@@ -60,12 +60,12 @@ all_configs = {
             'default': 'runs/train',
             'help': 'save to project/name'
         },
-        {
-            'key': 'entity',
-            'type': '',  # @ TODO specify type (str)
-            'default': None,
-            'help': 'W&B entity'
-        },
+        # {
+        #     'key': 'entity',
+        #     'type': '',  # @ TODO specify type (str)
+        #     'default': None,
+        #     'help': 'W&B entity'
+        # },
         {
             'key': 'name',
             'type': str,
@@ -84,24 +84,24 @@ all_configs = {
             'default': -1,
             'help': 'Log model after every "save_period" epoch'
         },
-        {
-            'key': 'artifact_alias',
-            'type': str,
-            'default': 'latest',
-            'help': 'version of dataset artifact to be used'
-        },
+        # {
+        #     'key': 'artifact_alias',
+        #     'type': str,
+        #     'default': 'latest',
+        #     'help': 'version of dataset artifact to be used'
+        # },
         {
             'key': 'freeze',
             'type': int or list,
             'default': [0],
             'help': 'Freeze layers: backbone of yolov7=50, first3=0 1 2'
         },
-        {
-            'key': 'v5-metric',
-            'type': bool,
-            'default': True,
-            'help': 'assume maximum recall as 1.0 in AP calculation'
-        },
+        # {
+        #     'key': 'v5-metric',
+        #     'type': bool,
+        #     'default': True,
+        #     'help': 'assume maximum recall as 1.0 in AP calculation'
+        # },
     ],
     'model_settings': [
         {
@@ -131,20 +131,20 @@ all_configs = {
             'help': 'anchors per output grid (0 to ignore)'
         },
     ],
-    'hyperparameters': [
-        {
-            'key': 'hyp',
-            'type': str,
-            'default': 'data/hyp.scratch.p5.yaml',
-            'help': 'hyperparameters path'
-        },
-        {
-            'key': 'evolve',
-            'type': bool,
-            'default': True,
-            'help': 'evolve hyperparameters'
-        },
-    ],
+    # 'hyperparameters': [
+    #     {
+    #         'key': 'hyp',
+    #         'type': str,
+    #         'default': 'data/hyp.scratch.p5.yaml',
+    #         'help': 'hyperparameters path'
+    #     },
+    #     {
+    #         'key': 'evolve',
+    #         'type': bool,
+    #         'default': True,
+    #         'help': 'evolve hyperparameters'
+    #     },
+    # ],
     'dataset': [
         {
             'key': 'data',
@@ -179,7 +179,7 @@ all_configs = {
         {
             'key': 'single-cls',
             'type': bool,
-            'default': True,
+            'default': False,
             'help': 'train multi-class data as single-class'
         },
         {
@@ -394,12 +394,12 @@ all_configs = {
         },
     ],
     'others': [
-        {
-            'key': 'bucket',
-            'type': str,
-            'default': '',
-            'help': 'gsutil bucket'
-        },
+        # {
+        #     'key': 'bucket',
+        #     'type': str,
+        #     'default': '',
+        #     'help': 'gsutil bucket'
+        # },
         {
             'key': 'local_rank',
             'type': int,
@@ -412,12 +412,12 @@ all_configs = {
             'default': 0.0,
             'help': 'Label smoothing epsilon'
         },
-        {
-            'key': 'upload_dataset',
-            'type': bool,
-            'default': True,
-            'help': 'Upload dataset as W&B artifact table'
-        },
+        # {
+        #     'key': 'upload_dataset',
+        #     'type': bool,
+        #     'default': True,
+        #     'help': 'Upload dataset as W&B artifact table'
+        # },
         {
             'key': 'bbox_interval',
             'type': int,
