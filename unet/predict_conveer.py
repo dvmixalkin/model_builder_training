@@ -18,7 +18,8 @@ from utils.scantronic.scantronic import mask2poly
 def get_args():
     parser = argparse.ArgumentParser(description='Predict masks from input images')
     parser.add_argument('--model', '-m',
-                        default='checkpoints/checkpoint_epoch50.pth',
+                        # default='checkpoints/checkpoint_epoch50.pth',
+                        default='checkpoints/best_dice.pth',
                         metavar='FILE',
                         help='Specify the file in which the model is stored')
     parser.add_argument('--input', '-i', metavar='INPUT', nargs='+', help='Filenames of input images', required=False)
@@ -169,7 +170,16 @@ if __name__ == '__main__':
     logging.info(f'Using device {device}')
 
     net.to(device=device)
-    net.load_state_dict(torch.load(args.model, map_location=device))
+    checkpoint = torch.load(args.model, map_location=device)
+    # 'img_size', 'epoch', 'dice_score', 'learning_rate', 'net'
+    try:
+        img_size = checkpoint['img_size']
+        weights = checkpoint['net']
+    except Exception as e:
+        print(e)
+        weights = checkpoint
+
+    net.load_state_dict(weights)
 
     logging.info('Model loaded!')
 
@@ -177,7 +187,7 @@ if __name__ == '__main__':
         logging.info(f'\nPredicting image {filename} ...')
         # img = Image.open(filename)
         img = get_image(filename)
-        img = img.resize([1500, 300], resample=Image.Resampling.BICUBIC)
+        img = img.resize(img_size, resample=Image.Resampling.BICUBIC)
         mask = predict_img(net=net,
                            full_img=img,
                            scale_factor=args.scale,
