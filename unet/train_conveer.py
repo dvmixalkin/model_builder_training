@@ -66,15 +66,18 @@ def create_dataloaders(train_set, val_set, batch_size, num_workers):
 def train_net(net,
               device,
               epochs: int = 5,
+              img_size: list = None,  # Width, Height
               batch_size: int = 1,
               learning_rate: float = 1e-5,
               val_percent: float = 0.1,
               save_checkpoint: bool = True,
               img_scale: float = 0.5,
               amp: bool = False,
-              num_workers: int = 4):
+              num_workers: int = 0):  # @TODO change back to 4 num workers
     # 1. Create dataset
-    dataset = create_dataset(dir_img, dir_mask, version=2, img_scale=0.5, img_size=[1500, 300])
+    if img_size is None:
+        img_size = [1500, 300]
+    dataset = create_dataset(dir_img, dir_mask, version=2, img_scale=0.5, img_size=img_size)
 
     # 2. Split into train / validation partitions
     train_set, val_set = create_splits(dataset, val_percent)
@@ -108,6 +111,7 @@ def train_net(net,
     global_step = 0
 
     # 5. Begin training
+    epoch_score = 0
     for epoch in range(1, epochs + 1):
         net.train()
         epoch_loss = 0
@@ -147,7 +151,8 @@ def train_net(net,
                 pbar.set_postfix(**{'loss (batch)': loss.item()})
 
                 # Evaluation round
-                division_step = (train_set['len'] // (10 * batch_size))
+                multiplier = 10  # @TODO change back to 10
+                division_step = (train_set['len'] // (multiplier * batch_size))
                 if division_step > 0:
                     if global_step % division_step == 0:
                         histograms = {}
@@ -176,8 +181,23 @@ def train_net(net,
                         })
 
         if save_checkpoint:
+            # get val_score for epoch net
+            score = evaluate(net, val_loader, device)
+            logging.info('Validation Dice score: {}'.format(score))
+            checkpoint_struct = {
+                'img_size': img_size,
+                'epoch': epoch,
+                'dice_score': score,
+                'learning_rate': optimizer.param_groups[0]['lr'],
+                'net': net.state_dict()
+            }
             Path(dir_checkpoint).mkdir(parents=True, exist_ok=True)
-            torch.save(net.state_dict(), str(dir_checkpoint / 'checkpoint_epoch{}.pth'.format(epoch)))
+            # torch.save(net.state_dict(), str(dir_checkpoint / 'checkpoint_epoch{}.pth'.format(epoch)))
+            torch.save(checkpoint_struct, str(dir_checkpoint / 'checkpoint_epoch{}.pth'.format(epoch)))
+            if score >= epoch_score:
+                epoch_score = score
+                torch.save(checkpoint_struct, str(dir_checkpoint / 'best_dice.pth'.format(epoch)))
+
             logging.info(f'Checkpoint {epoch} saved!')
 
 
@@ -185,6 +205,8 @@ def get_args():
     parser = argparse.ArgumentParser(description='Train the UNet on images and target masks')
     parser.add_argument('--epochs', '-e', metavar='E', type=int, default=50, help='Number of epochs')
     parser.add_argument('--batch-size', '-b', dest='batch_size', metavar='B', type=int, default=3, help='Batch size')
+    parser.add_argument('--img-size', type=list, default=[1500, 300], help='image input size')
+
     parser.add_argument('--learning-rate', '-l', metavar='LR', type=float, default=1e-5,
                         help='Learning rate', dest='lr')
     parser.add_argument('--load', '-f', type=str, default=False, help='Load model from a .pth file')
@@ -223,6 +245,7 @@ if __name__ == '__main__':
     try:
         train_net(net=net,
                   epochs=args.epochs,
+                  img_size=args.img_size,
                   batch_size=args.batch_size,
                   learning_rate=args.lr,
                   device=device,
