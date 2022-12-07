@@ -12,6 +12,27 @@ from utils.data_loading import BasicDataset
 from unet import UNet
 from utils.utils import plot_img_and_mask
 from pathlib import Path
+from utils.scantronic.scantronic import mask2poly
+
+
+def get_args():
+    parser = argparse.ArgumentParser(description='Predict masks from input images')
+    parser.add_argument('--model', '-m',
+                        default='checkpoints/checkpoint_epoch50.pth',
+                        metavar='FILE',
+                        help='Specify the file in which the model is stored')
+    parser.add_argument('--input', '-i', metavar='INPUT', nargs='+', help='Filenames of input images', required=False)
+    parser.add_argument('--output', '-o', metavar='OUTPUT', nargs='+', help='Filenames of output images')
+    parser.add_argument('--viz', '-v', action='store_true',
+                        help='Visualize the images as they are processed')
+    parser.add_argument('--no-save', '-n', action='store_true', help='Do not save the output masks')
+    parser.add_argument('--mask-threshold', '-t', type=float, default=0.5,
+                        help='Minimum probability value to consider a mask pixel white')
+    parser.add_argument('--scale', '-s', type=float, default=0.5,
+                        help='Scale factor for the input images')
+    parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
+
+    return parser.parse_args()
 
 
 def predict_img(net,
@@ -44,26 +65,6 @@ def predict_img(net,
         return (full_mask > out_threshold).numpy()
     else:
         return F.one_hot(full_mask.argmax(dim=0), net.n_classes).permute(2, 0, 1).numpy()
-
-
-def get_args():
-    parser = argparse.ArgumentParser(description='Predict masks from input images')
-    parser.add_argument('--model', '-m',
-                        default='checkpoints/checkpoint_epoch50.pth',
-                        metavar='FILE',
-                        help='Specify the file in which the model is stored')
-    parser.add_argument('--input', '-i', metavar='INPUT', nargs='+', help='Filenames of input images', required=False)
-    parser.add_argument('--output', '-o', metavar='OUTPUT', nargs='+', help='Filenames of output images')
-    parser.add_argument('--viz', '-v', action='store_true',
-                        help='Visualize the images as they are processed')
-    parser.add_argument('--no-save', '-n', action='store_true', help='Do not save the output masks')
-    parser.add_argument('--mask-threshold', '-t', type=float, default=0.1,
-                        help='Minimum probability value to consider a mask pixel white')
-    parser.add_argument('--scale', '-s', type=float, default=0.5,
-                        help='Scale factor for the input images')
-    parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
-
-    return parser.parse_args()
 
 
 def get_output_filenames(args):
@@ -112,6 +113,46 @@ def preprocess(pil_img, scale, is_mask):
     return img_ndarray
 
 
+def get_bbox(mask, threshold=100):
+    polygons = mask2poly(mask)
+    bbox_coordinates = []
+    for polygon in polygons:
+        if polygon.area < threshold:
+            continue
+        x, y = polygon.exterior.xy
+        poly_coordinates = np.stack([x, y]).transpose()
+        x_min, x_max = poly_coordinates[:, 0].min(), poly_coordinates[:, 0].max()
+        y_min, y_max = poly_coordinates[:, 1].min(), poly_coordinates[:, 1].max()
+        bbox_coordinates.append([x_min, y_min, x_max, y_max])
+    return bbox_coordinates
+
+
+def get_bboxes_from_mask(mask):
+    all_cls_boxes = []
+    for cls_idx, channel in enumerate(mask):
+        if cls_idx == 0:
+            continue
+        print(channel.shape)
+        boxes = np.array(get_bbox(channel))
+        cls_info = np.hstack([np.ones(boxes.shape[0]).reshape(-1, 1), boxes]).astype(int)
+        all_cls_boxes.append(cls_info)
+    return np.vstack(all_cls_boxes)
+
+
+def vis_boxes(image, coordinates):
+    import cv2
+    if not isinstance(image, np.ndarray):
+        image = np.array(image.convert('RGB'))
+    img_copy = image.copy()
+    imgHeight, imgWidth, _ = img_copy.shape
+    for bbox in coordinates:
+        label, left, top, right, bottom = bbox
+        color, thick = (255, 0, 0), 5
+        cv2.rectangle(img_copy, (left, top), (right, bottom), color, thick)
+        cv2.putText(img_copy, str(label), (left, top - 12), 0, 1e-3 * imgHeight, color, thick // 3)
+    Image.fromarray(img_copy).show()
+
+
 if __name__ == '__main__':
     args = get_args()
     in_files = args.input
@@ -143,7 +184,8 @@ if __name__ == '__main__':
                            out_threshold=args.mask_threshold,
                            device=device)
 
-        # @TODO add module to reject bounding boxes from masks
+        # get bounding boxes from masks
+        bboxes = get_bboxes_from_mask(mask)
 
         if not args.no_save:
             out_filename = out_files[i]
@@ -154,3 +196,4 @@ if __name__ == '__main__':
         if args.viz:
             logging.info(f'Visualizing results for image {filename}, close to continue...')
             plot_img_and_mask(img, mask)
+            vis_boxes(img, bboxes)
