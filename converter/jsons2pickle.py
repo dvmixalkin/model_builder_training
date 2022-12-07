@@ -1,4 +1,5 @@
 import argparse
+import glob
 import json
 import numpy as np
 import os
@@ -7,6 +8,30 @@ import torch
 import yaml
 
 from pathlib import Path
+
+import rasterio
+import shapely
+from rasterio import features
+from shapely.geometry import Polygon
+from PIL import Image
+
+
+def mask2poly(mask):
+    all_polygons = []
+    for shape, value in features.shapes(mask.astype(np.uint8), mask=(mask > 0),
+                                        transform=rasterio.Affine(1.0, 0, 0, 0, 1.0, 0)):
+        all_polygons.append(shapely.geometry.shape(shape))
+    return all_polygons
+
+
+def poly2mask(polygons, shape):
+    if isinstance(polygons, shapely.geometry.Polygon):
+        polygons = [polygons]
+    binary_mask = rasterio.features.rasterize(
+        polygons,
+        out_shape=shape
+    )
+    return binary_mask.astype(np.uint8)
 
 
 def xyxy2xywh(x):
@@ -44,7 +69,6 @@ def xyxy2xywhn(x, w=640, h=640, clip=False, eps=0.0):
 
 
 def parse_annotations(path_to_json, width=None, heigh=None):
-
     try:
         with open(path_to_json, 'r') as stream:
             data = json.load(stream)
@@ -54,6 +78,7 @@ def parse_annotations(path_to_json, width=None, heigh=None):
             data = json.load(stream)
 
     boxes = []
+    polygons = []
     labels = []
     for ann in data:
         label = ann['tnved'] if 'tnved' in ann and ann['tnved'] is not None else ann['id_category']
@@ -67,7 +92,8 @@ def parse_annotations(path_to_json, width=None, heigh=None):
         else:
             rectangle = xyxy2xywh(x)
         boxes.append(rectangle.tolist()[0])
-    return boxes, labels
+        polygons.append(points)
+    return boxes, polygons, labels
 
 
 class Pickler:
@@ -104,7 +130,16 @@ class Pickler:
             if not os.path.exists(npy_folder):
                 return None, 0  # raise FileNotFoundError
             else:
-                npy_files = [Path(file).stem for file in os.listdir(npy_folder) if '.npy' in file]
+                npy_dict, npy_files = {}, []
+                # for file in os.listdir(npy_folder):
+                for file in glob.glob(npy_folder + f'/*{data_ext}'):
+                    stem = str(Path(file).stem)
+                    name = stem.split('_height_')[0]
+                    npy_files.append(name)
+                    npy_dict[name] = {
+                        'original_name': stem,
+                        'size': [int(value) for value in stem.split('_height_')[1].split('_width_')]
+                    }
 
             annotation = os.path.join(train_dir, 'annotations')
             if not os.path.exists(annotation):
@@ -122,29 +157,46 @@ class Pickler:
         # if set(npy_files) == set(json_files):
         if len(intersected_names) > 0:
             class_mapper = {}
-            cumulative_dict = {'train': {}, 'val': {}}
-            for filename in npy_files:
-                npy_file = os.path.join(npy_folder, filename + data_ext)
-                npy_array = np.load(npy_file)
-                heigh, width = npy_array.shape[0], npy_array.shape[1]
+            cumulative_dict = {'train': {}, 'val': {}, 'configs': None}
+            for filename in intersected_names:
+                npy_file = os.path.join(npy_folder, npy_dict[filename]['original_name'] + data_ext)
+                height, width = npy_dict[filename]['size']
                 json_file = os.path.join(annotation, filename + anno_ext)
 
-                boxes, labels = parse_annotations(json_file, width=width, heigh=heigh)
+                boxes, polygons, labels = parse_annotations(json_file, width=width, heigh=height)
                 anno = []
-                for lbl, box in zip(labels, boxes):
+                mask = np.zeros([height, width])
+                for lbl, box, polygon in zip(labels, boxes, polygons):
                     cls_name = lbl
                     if self.general_classes:
                         cls_name = classes_map[lbl]
                     if cls_name not in class_mapper:
                         class_mapper[cls_name] = len(class_mapper)
                     cls_id = class_mapper[cls_name]
+                    polygon = Polygon(polygon)
+                    mask += poly2mask(polygon, [height, width]) * (cls_id + 1)
                     anno.append([cls_id, *box])
 
                 seed = np.random.rand()
                 split = 'train' if seed < self.train_fraction else 'val'
                 cumulative_dict[split][npy_file] = anno
+                save_name = npy_file\
+                    .replace('train_target_files', 'annotations')\
+                    .replace(data_ext, '_machine_mask.png')
+                Image.fromarray(mask).convert("L").save(save_name)
 
-            if cumulative_dict['train'] == {'train': {}, 'val': {}}:
+            cumulative_dict['configs'] = {
+                'machine_mapper': class_mapper,
+                'human_mapper': classes_map,
+            }
+
+            if cumulative_dict == {
+                'train': {}, 'val': {},
+                'configs': {
+                    'machine_mapper': {},
+                    'human_mapper': classes_map
+                }
+            }:
                 return None, 0
 
             pickle_path = os.path.join(train_dir, self.pickle_filename)
@@ -169,7 +221,7 @@ def parse_opt():
 def main():
     opt = parse_opt()
     pickler = Pickler(opt.root_folder, opt.cfg_filename)
-    return pickler.process(opt.train_name)
+    return pickler.process(opt.train_name, data_ext='.png')
 
 
 if __name__ == '__main__':
