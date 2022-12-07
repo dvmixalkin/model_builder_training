@@ -4,6 +4,7 @@ import cv2
 import os
 import argparse
 from pathlib import Path
+from PIL import Image
 
 
 def get_data(
@@ -41,7 +42,7 @@ def process_image(object_, channels):
     return array_to_save
 
 
-def resize_array(array_to_save, divider=2):
+def resize_array(array_to_save, divider=2.):
     resize_width = int(array_to_save.shape[1] / divider)
     resize_height = int(array_to_save.shape[0] / divider)
     dim = (resize_width, resize_height)
@@ -53,14 +54,26 @@ class Converter:
         self.root_folder = root_folder
 
     @staticmethod
-    def process(npz_bytes: bytes, save_path: str = '', scale_factor: float = 1, channels: list = ['raw_image_low']):
+    def process(npz_bytes: bytes, save_path: str = '',
+                scale_factor: float = 1, channels: list = ['raw_image_low'],
+                ext: str = '.npy'):
         if save_path == '':
             return None, 0
         if not isinstance(npz_bytes, bytes):
             return None, 0
 
         npy_array = process_image(npz_bytes, channels)
-        np.save(file=save_path + '.npy', arr=resize_array(npy_array, divider=scale_factor))
+        h, w = npy_array.shape
+        try:
+            if ext == '.npy':
+                np.save(file=save_path + f'_height_{h}_width_{w}' + '.npy', arr=resize_array(npy_array, divider=scale_factor))
+            elif ext == '.png':
+                path2save = save_path + f'_height_{h}_width_{w}' + ext
+                Image.fromarray(resize_array(npy_array, divider=scale_factor)).convert('L').save(path2save)
+            else:
+                return None, 0
+        except:
+            return None, 0
         return b'', 1
 
 
@@ -111,7 +124,8 @@ def main_loop():
             npz_bytes=npz_bytes,
             save_path=save_path,
             scale_factor=1,
-            channels=['raw_image_low']
+            channels=['raw_image_low'],
+            ext='.png'
         )
 
 
