@@ -413,7 +413,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         # ==============================================================================================================
 
         # cache_path = (p if p.is_file() else Path(self.label_files[0]).parent).with_suffix('.cache')
-        cache_path = p.with_suffix('.cache')# cached labels
+        cache_path = p.with_suffix('.cache')  # cached labels
         if cache_path.is_file():
             cache, exists = torch.load(cache_path), True  # load
         else:
