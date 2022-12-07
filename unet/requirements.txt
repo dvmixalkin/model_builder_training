@@ -1,7 +1,11 @@
 matplotlib
 numpy
 Pillow
-torch
-torchvision
+# torch
+torch==1.12.1+cu113
+# torchvision
+torchvision==0.13.1+cu113
 tqdm
 wandb
+rasterio
+shapely
