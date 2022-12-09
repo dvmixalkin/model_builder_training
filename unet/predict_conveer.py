@@ -22,6 +22,10 @@ def get_args():
                         default='checkpoints/best_dice.pth',
                         metavar='FILE',
                         help='Specify the file in which the model is stored')
+    parser.add_argument('--img-size', type=list, default=[1500, 300], help='image input size')
+    parser.add_argument('--inp-channels', type=int, default=3, help='Number of input channels')
+    parser.add_argument('--classes', '-c', type=int, default=2, help='Number of classes')
+
     parser.add_argument('--input', '-i', metavar='INPUT', nargs='+', help='Filenames of input images', required=False)
     parser.add_argument('--output', '-o', metavar='OUTPUT', nargs='+', help='Filenames of output images')
     parser.add_argument('--viz', '-v', action='store_true',
@@ -163,24 +167,29 @@ if __name__ == '__main__':
     # args.input = in_files
     out_files = get_output_filenames(args)
 
-    net = UNet(n_channels=1, n_classes=2, bilinear=args.bilinear)
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    logging.info(f'Loading model {args.model}')
-    logging.info(f'Using device {device}')
 
-    net.to(device=device)
     checkpoint = torch.load(args.model, map_location=device)
-    # 'img_size', 'epoch', 'dice_score', 'learning_rate', 'net'
     try:
         img_size = checkpoint['img_size']
         weights = checkpoint['net']
+        input_channels = checkpoint['input_channels']
+        classes = checkpoint['classes']
+
     except Exception as e:
         print(e)
         weights = checkpoint
+        img_size = args.img_size
+        input_channels = args.inp_channels
+        classes = args.classes
 
+    net = UNet(n_channels=input_channels, n_classes=classes, bilinear=args.bilinear)
+
+    logging.info(f'Loading model {args.model}')
     net.load_state_dict(weights)
 
+    logging.info(f'Using device {device}')
+    net.to(device=device)
     logging.info('Model loaded!')
 
     for i, filename in enumerate(in_files):
