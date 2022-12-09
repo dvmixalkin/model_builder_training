@@ -186,6 +186,8 @@ def train_net(net,
             logging.info('Validation Dice score: {}'.format(score))
             checkpoint_struct = {
                 'img_size': img_size,
+                'input_channels': net.n_channels,
+                'classes': net.n_classes,
                 'epoch': epoch,
                 'dice_score': score,
                 'learning_rate': optimizer.param_groups[0]['lr'],
@@ -216,6 +218,7 @@ def get_args():
     parser.add_argument('--amp', action='store_true', default=False, help='Use mixed precision')
     parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
     parser.add_argument('--classes', '-c', type=int, default=2, help='Number of classes')
+    parser.add_argument('--inp-channels', type=int, default=1, help='Number of input channels')
 
     return parser.parse_args()
 
@@ -230,7 +233,7 @@ if __name__ == '__main__':
     # Change here to adapt to your data
     # n_channels=3 for RGB images
     # n_classes is the number of probabilities you want to get per pixel
-    net = UNet(n_channels=1, n_classes=args.classes, bilinear=args.bilinear)
+    net = UNet(n_channels=args.inp_channels, n_classes=args.classes, bilinear=args.bilinear)
 
     logging.info(f'Network:\n'
                  f'\t{net.n_channels} input channels\n'
