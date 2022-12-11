@@ -2,7 +2,7 @@ import argparse
 import logging
 import sys
 from pathlib import Path
-
+import pickle
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,12 +16,6 @@ from utils.dice_score import dice_loss
 from evaluate import evaluate
 from unet import UNet
 
-# dir_img = Path('./data/imgs/')
-# dir_mask = Path('./data/masks/')
-dir_img = Path('../converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899/train_target_files/')
-dir_mask = Path('../converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899/annotations')
-dir_checkpoint = Path('./checkpoints/')
-
 
 def create_dataset_v1(dir_img, dir_mask, img_scale):
     try:
@@ -31,20 +25,20 @@ def create_dataset_v1(dir_img, dir_mask, img_scale):
     return dataset
 
 
-def create_dataset_v2(dir_img_, dir_mask_, img_size=[1500, 300]):
+def create_dataset_v2(dir_img_, dir_mask_, pickle_data, img_size=[1500, 300]):
     from utils.scantronic.scantronic import MultiLabelScantronic
     dataset = MultiLabelScantronic(
-        dir_img_, dir_mask_, img_size=img_size,
+        dir_img_, dir_mask_, pickle_data, img_size=img_size,
         suffix='_machine_mask', data_ext='.png'
     )
     return dataset
 
 
-def create_dataset(dir_img_, dir_mask_, version=1, img_scale=1., img_size=[1500, 300]):
+def create_dataset(dir_img_, dir_mask_, pickle_data, version=1, img_scale=1., img_size=[1500, 300]):
     if version == 1:
         return create_dataset_v1(dir_img_, dir_mask_, img_scale)
     elif version == 2:
-        return create_dataset_v2(dir_img_, dir_mask_, img_size=img_size)
+        return create_dataset_v2(dir_img_, dir_mask_, pickle_data, img_size=img_size)
     else:
         raise NotImplemented
 
@@ -65,38 +59,56 @@ def create_dataloaders(train_set, val_set, batch_size, num_workers):
 
 def train_net(net,
               device,
+              start_epoch: int = 0,
               epochs: int = 5,
               img_size: list = None,  # Width, Height
               batch_size: int = 1,
               learning_rate: float = 1e-5,
-              val_percent: float = 0.1,
+              # val_percent: float = 0.1,
               save_checkpoint: bool = True,
               img_scale: float = 0.5,
               amp: bool = False,
-              num_workers: int = 0):  # @TODO change back to 4 num workers
+              num_workers: int = 0,  # @TODO change back to 4 num workers
+              working_dir: str = None):
+
+    parent_dir = Path(working_dir).parent
+    dir_img = Path(f'{parent_dir}/train_target_files')
+    dir_mask = Path(f'{parent_dir}/annotations')
+    dir_checkpoint = Path(f'{working_dir}/weights/')
+    pickle_file = f'{parent_dir}/train_dataset.pkl'
+    with open(pickle_file, 'rb') as stream:
+        annotation_data = pickle.load(stream)
+
     # 1. Create dataset
     if img_size is None:
         img_size = [1500, 300]
-    dataset = create_dataset(dir_img, dir_mask, version=2, img_scale=0.5, img_size=img_size)
+    train_set = create_dataset(
+        dir_img, dir_mask, pickle_data=list(annotation_data['train'].keys()),
+        version=2, img_scale=1., img_size=img_size
+    )
+    val_set = create_dataset(
+        dir_img, dir_mask, pickle_data=list(annotation_data['val'].keys()),
+        version=2, img_scale=1., img_size=img_size
+    )
 
     # 2. Split into train / validation partitions
-    train_set, val_set = create_splits(dataset, val_percent)
+    # train_set, val_set = create_splits(dataset, val_percent)
 
     # 3. Create data loaders
-    train_loader, val_loader = create_dataloaders(train_set['set'], val_set['set'], batch_size, num_workers)
+    train_loader, val_loader = create_dataloaders(train_set, val_set, batch_size, num_workers)
 
     # (Initialize logging)
-    experiment = wandb.init(project='U-Net', resume='allow', anonymous='must')
+    experiment = wandb.init(dir=f'{parent_dir}/train_model', project='U-Net', resume='allow', anonymous='must')
     experiment.config.update(dict(epochs=epochs, batch_size=batch_size, learning_rate=learning_rate,
-                                  val_percent=val_percent, save_checkpoint=save_checkpoint, img_scale=img_scale,
+                                  save_checkpoint=save_checkpoint, img_scale=img_scale,
                                   amp=amp))
 
     logging.info(f'''Starting training:
         Epochs:          {epochs}
         Batch size:      {batch_size}
         Learning rate:   {learning_rate}
-        Training size:   {train_set['len']}
-        Validation size: {val_set['len']}
+        Training size:   {len(train_set.image_paths)}
+        Validation size: {len(val_set.image_paths)}
         Checkpoints:     {save_checkpoint}
         Device:          {device.type}
         Images scaling:  {img_scale}
@@ -112,10 +124,10 @@ def train_net(net,
 
     # 5. Begin training
     epoch_score = 0
-    for epoch in range(1, epochs + 1):
+    for epoch in range(start_epoch, epochs + 1):
         net.train()
         epoch_loss = 0
-        with tqdm(total=train_set['len'], desc=f'Epoch {epoch}/{epochs}', unit='img') as pbar:
+        with tqdm(total=len(train_set.image_paths), desc=f'Epoch {epoch}/{epochs}', unit='img') as pbar:
             for batch in train_loader:
                 images = batch['image']
                 true_masks = batch['mask']
@@ -152,7 +164,7 @@ def train_net(net,
 
                 # Evaluation round
                 multiplier = 10  # @TODO change back to 10
-                division_step = (train_set['len'] // (multiplier * batch_size))
+                division_step = (len(train_set.image_paths) // (multiplier * batch_size))
                 if division_step > 0:
                     if global_step % division_step == 0:
                         histograms = {}
@@ -205,29 +217,44 @@ def train_net(net,
 
 def get_args():
     parser = argparse.ArgumentParser(description='Train the UNet on images and target masks')
+    parser.add_argument('--working-dir', type=str,
+                        default='../converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899',
+                        help='dir to store model artifacts')
+    parser.add_argument('--name', type=str, default='', help='Name of experiment')
+    parser.add_argument('--classes', '-c', type=int, default=2, help='Number of classes')
+    parser.add_argument('--inp-channels', type=int, default=1, help='Number of input channels')
+    # parser.add_argument('--load', '-f', type=str, default=False, help='Load model from a .pth file')
+    parser.add_argument('--resume', type=bool, default=True, help='Load model from a .pth file')
+
     parser.add_argument('--epochs', '-e', metavar='E', type=int, default=50, help='Number of epochs')
     parser.add_argument('--batch-size', '-b', dest='batch_size', metavar='B', type=int, default=3, help='Batch size')
     parser.add_argument('--img-size', type=list, default=[1500, 300], help='image input size')
 
     parser.add_argument('--learning-rate', '-l', metavar='LR', type=float, default=1e-5,
                         help='Learning rate', dest='lr')
-    parser.add_argument('--load', '-f', type=str, default=False, help='Load model from a .pth file')
     parser.add_argument('--scale', '-s', type=float, default=0.5, help='Downscaling factor of the images')
-    parser.add_argument('--validation', '-v', dest='val', type=float, default=10.0,
-                        help='Percent of the data that is used as validation (0-100)')
+    # parser.add_argument('--validation', '-v', dest='val', type=float, default=10.0,
+    #                     help='Percent of the data that is used as validation (0-100)')
     parser.add_argument('--amp', action='store_true', default=False, help='Use mixed precision')
     parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
-    parser.add_argument('--classes', '-c', type=int, default=2, help='Number of classes')
-    parser.add_argument('--inp-channels', type=int, default=1, help='Number of input channels')
-
     return parser.parse_args()
 
 
 if __name__ == '__main__':
     args = get_args()
+    assert args.working_dir is not None, 'please, specify working dir.'
+
+    from conveer.opt_checker import check_opts
+    import yaml
+    # get name to find latest run
+    with open(f'{args.working_dir}/train_settings.yaml') as f:
+        customer_cfgs = argparse.Namespace(**yaml.load(f, Loader=yaml.SafeLoader))
+    args, unmatched_configs = check_opts(opt=args, custom_cfg=vars(customer_cfgs))
 
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     logging.info(f'Using device {device}')
 
     # Change here to adapt to your data
@@ -240,21 +267,41 @@ if __name__ == '__main__':
                  f'\t{net.n_classes} output channels (classes)\n'
                  f'\t{"Bilinear" if net.bilinear else "Transposed conv"} upscaling')
 
-    if args.load:
-        net.load_state_dict(torch.load(args.load, map_location=device))
-        logging.info(f'Model loaded from {args.load}')
+    # if args.load:
+    #     net.load_state_dict(torch.load(args.load, map_location=device))
+    #     logging.info(f'Model loaded from {args.load}')
+    working_dir = f'{args.working_dir}/{args.name}'
+    args.start_epoch = 0
+    if args.resume:
+        import glob
+        weights_path = f'{working_dir}/weights'
+        file_paths = glob.glob(f'{weights_path}/checkpoint_epoch*.pth')
+        indexes = [int(str(Path(f).stem).strip('checkpoint_epoch')) for f in file_paths]
+        last_weight_path = file_paths[indexes.index(max(indexes))]
+        checkpoint = torch.load(last_weight_path, map_location='cpu')
+
+        args.img_size = checkpoint['img_size']
+        args.start_epoch = checkpoint['epoch']
+        args.lr = checkpoint['learning_rate']
+        assert checkpoint['input_channels'] == args.inp_channels, 'Channels num mismatch'
+        assert checkpoint['classes'] == args.classes, 'Classes num mismatch'
+
+        net.load_state_dict(checkpoint['net'])
+        logging.info(f'Model loaded from {last_weight_path}')
 
     net.to(device=device)
     try:
         train_net(net=net,
+                  start_epoch=args.start_epoch,
                   epochs=args.epochs,
                   img_size=args.img_size,
                   batch_size=args.batch_size,
                   learning_rate=args.lr,
                   device=device,
                   img_scale=args.scale,
-                  val_percent=args.val / 100,
-                  amp=args.amp)
+                  # val_percent=args.val / 100,
+                  amp=args.amp,
+                  working_dir=working_dir)
     except KeyboardInterrupt:
         torch.save(net.state_dict(), 'INTERRUPTED.pth')
         logging.info('Saved interrupt')
