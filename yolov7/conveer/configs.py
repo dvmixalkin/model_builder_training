@@ -25,7 +25,7 @@ all_configs = {
             'help': 'total batch size for all GPUs'
         },
         {
-            'key': 'img-size',
+            'key': 'imgsz',
             'type': int or list,
             'default': [640, 640],
             'help': '[train, test] image sizes'
