@@ -29,8 +29,9 @@ def poly2mask(polygons, shape):
 
 
 class MultiLabelScantronic(Dataset):
-    def __init__(self, images_dir, masks_dir, img_size, suffix, data_ext='.npy'):
+    def __init__(self, images_dir, masks_dir, pickle_data, img_size, suffix, data_ext='.npy'):
         self.img_size = img_size
+        split_stems = [Path(f).stem for f in pickle_data]
         images_orig = glob.glob(f'{images_dir}/*{data_ext}')
         masks_orig = glob.glob(f'{masks_dir}/*{suffix}.png')
         intersected_names = list(
@@ -40,16 +41,12 @@ class MultiLabelScantronic(Dataset):
                 str(Path(f).stem).strip('_machine_mask') for f in masks_orig
             )
         )
+        final_intersection_names = set(intersected_names).intersection(split_stems)
         self.image_paths = [
             f for f in glob.glob(f'{images_dir}/*{data_ext}')
-            if str(Path(f).stem) in intersected_names
+            if str(Path(f).stem) in final_intersection_names
         ]
         self.image_paths.sort()
-        self.masks_path = [
-            f for f in glob.glob(f'{masks_dir}/*{suffix}.png')
-            if str(Path(f).stem).strip('_machine_mask') in intersected_names
-        ]
-        self.masks_path.sort()
 
     @staticmethod
     def preprocess(pil_img, scale, is_mask):
@@ -85,7 +82,9 @@ class MultiLabelScantronic(Dataset):
 
     def __getitem__(self, item):
         image = self.get_image(self.image_paths[item])
-        mask = Image.open(self.masks_path[item])
+
+        mask_path = self.image_paths[item].replace('train_target_files', 'annotations').replace('.png', '_machine_mask.png')
+        mask = Image.open(mask_path)
 
         # resize image and mask
         image_copy = image.resize(self.img_size, resample=Image.BICUBIC)
