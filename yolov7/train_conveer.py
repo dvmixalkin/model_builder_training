@@ -65,8 +65,8 @@ logger = logging.getLogger(__name__)
 def init_model(weights, nc, rank, freeze):
     pretrained = weights.endswith('.pt')
     if pretrained:
-        with torch_distributed_zero_first(rank):
-            attempt_download(weights)  # download if not found locally
+        # with torch_distributed_zero_first(rank):
+        #     attempt_download(weights)  # download if not found locally
         ckpt = torch.load(weights, map_location=device)  # load checkpoint
         model = Model(opt.cfg or ckpt['model'].yaml, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
         exclude = ['anchor'] if (opt.cfg or hyp.get('anchors')) and not opt.resume else []  # exclude keys
@@ -259,7 +259,7 @@ def train(hyp, opt, device, tb_writer=None, unmatched_configs=None):
 
         # Epochs
         start_epoch = ckpt['epoch'] + 1
-        if opt.resume:
+        if opt.resume and start_epoch != 0:
             assert start_epoch > 0, '%s training to %g epochs is finished, nothing to resume.' % (weights, epochs)
         if epochs < start_epoch:
             logger.info('%s has been trained for %g epochs. Fine-tuning for %g additional epochs.' %
@@ -492,14 +492,19 @@ def train(hyp, opt, device, tb_writer=None, unmatched_configs=None):
 
             # Save model
             if (not opt.nosave) or (final_epoch and not opt.evolve):  # if save
-                ckpt = {'epoch': epoch,
-                        'best_fitness': best_fitness,
-                        'training_results': results_file.read_text(),
-                        'model': deepcopy(model.module if is_parallel(model) else model).half(),
-                        'ema': deepcopy(ema.ema).half(),
-                        'updates': ema.updates,
-                        'optimizer': optimizer.state_dict(),
-                        'wandb_id': wandb_logger.wandb_run.id if wandb_logger.wandb else None}
+                ckpt = {
+                    'epoch': epoch,
+                    # ==================================================================================================
+                    'img_size': opt.img_size,
+                    # ==================================================================================================
+                    'best_fitness': best_fitness,
+                    'training_results': results_file.read_text(),
+                    'model': deepcopy(model.module if is_parallel(model) else model).half(),
+                    'ema': deepcopy(ema.ema).half(),
+                    'updates': ema.updates,
+                    'optimizer': optimizer.state_dict(),
+                    'wandb_id': wandb_logger.wandb_run.id if wandb_logger.wandb else None
+                }
 
                 # Save last, best and delete
                 torch.save(ckpt, last)
@@ -507,12 +512,14 @@ def train(hyp, opt, device, tb_writer=None, unmatched_configs=None):
                     torch.save(ckpt, best)
                 if (best_fitness == fi) and (epoch >= 200):
                     torch.save(ckpt, wdir / 'best_{:03d}.pt'.format(epoch))
+
                 if epoch == 0:
                     torch.save(ckpt, wdir / 'epoch_{:03d}.pt'.format(epoch))
                 elif ((epoch + 1) % 25) == 0:
                     torch.save(ckpt, wdir / 'epoch_{:03d}.pt'.format(epoch))
                 elif epoch >= (epochs - 5):
                     torch.save(ckpt, wdir / 'epoch_{:03d}.pt'.format(epoch))
+
                 if wandb_logger.wandb:
                     if ((epoch + 1) % opt.save_period == 0 and not final_epoch) and opt.save_period != -1:
                         wandb_logger.log_model(
@@ -575,7 +582,9 @@ def parse_args():
     parser.add_argument('--batch-size', type=int, default=16, help='total batch size for all GPUs')
     parser.add_argument('--img-size', nargs='+', type=int, default=[640, 640], help='[train, test] image sizes')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
-    parser.add_argument('--resume', nargs='?', const=True, default=False, help='resume most recent training')
+    parser.add_argument('--resume', nargs='?', const=True,
+                        default=True,  # False,
+                        help='resume most recent training')
     parser.add_argument('--nosave', action='store_true', help='only save final checkpoint')
     parser.add_argument('--notest', action='store_true', help='only test final epoch')
     parser.add_argument('--noautoanchor', action='store_true', help='disable autoanchor check')
@@ -609,17 +618,32 @@ def parse_args():
 
 if __name__ == '__main__':
     opt = parse_args()
-    path_to_data = '/usr/src/converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899'
-    # path_to_data = '../converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899'
+    # path_to_data = '/usr/src/converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899'
+    path_to_data = '../converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899'
     loggerName = path_to_data.split(os.path.sep)[-1]
     logger.name = loggerName
 
     from conveer.utils.opt_checker import check_opts
 
-    opt, unmatched_configs = check_opts(
-        opt=opt, custom_cfg=f'{path_to_data}/train_settings.yaml', data_path=path_to_data)
-    unmatched_configs['path_to_data'] = path_to_data
+    # get name to find latest run
+    with open(f'{path_to_data}/train_settings.yaml') as f:
+        customer_cfgs = argparse.Namespace(**yaml.load(f, Loader=yaml.SafeLoader))
+    name = customer_cfgs.name
 
+    pretrained_opts = f'{path_to_data}/train_model/{name}/opt.yaml'
+    if os.path.exists(pretrained_opts):
+        opt, _ = check_opts(
+            opt=opt, custom_cfg=pretrained_opts, data_path=path_to_data)
+        # get last.pt weights if exists
+        pretrained_weights = f'{Path(pretrained_opts).parent}/weights/last.pt'
+        if os.path.exists(pretrained_weights):
+            opt.resume = pretrained_weights
+        else:
+            print(f'No pretrained weights by path: {pretrained_weights}')
+    opt, unmatched_configs = check_opts(
+        opt=opt, custom_cfg=vars(customer_cfgs), data_path=path_to_data)
+
+    unmatched_configs['path_to_data'] = path_to_data
     # ==================================================================================================================
     # === Set DDP variables
     # ==================================================================================================================
@@ -630,8 +654,10 @@ if __name__ == '__main__':
     # ==================================================================================================================
     # === Resume
     # ==================================================================================================================
-    wandb_run = check_wandb_resume(opt)
-    if opt.resume and not wandb_run:  # resume an interrupted run
+
+    # --> wandb_run = check_wandb_resume(opt)
+    # --> if opt.resume and not wandb_run:  # resume an interrupted run
+    try:
         ckpt = opt.resume if isinstance(opt.resume, str) else get_latest_run()  # specified or most recent path
         assert os.path.isfile(ckpt), 'ERROR: --resume checkpoint does not exist'
         apriori = opt.global_rank, opt.local_rank
@@ -643,16 +669,31 @@ if __name__ == '__main__':
         opt.batch_size = opt.total_batch_size
         opt.global_rank, opt.local_rank = apriori  # reinstate
         logger.info('Resuming training from %s' % ckpt)
-    else:
+    # --> else:
+    except Exception as e:
+        logger.info(f'{e} - Starting new training process')
         # opt.hyp = opt.hyp or ('hyp.finetune.yaml' if opt.weights else 'hyp.scratch.yaml')
         opt.data, opt.cfg, opt.hyp = check_file(opt.data), check_file(opt.cfg), check_file(opt.hyp)  # check files
         assert len(opt.cfg) or len(opt.weights), 'either --cfg or --weights must be specified'
         opt.img_size.extend([opt.img_size[-1]] * (2 - len(opt.img_size)))  # extend to 2 sizes (train, test)
         opt.name = 'evolve' if opt.evolve else opt.name
-        opt.save_dir = increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok | opt.evolve)  # increment run
+
+        # ORIGINAL - increment run
+        # opt.save_dir = increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok | opt.evolve)
+
+    # CHANGES
+    opt.save_dir = str(Path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok | opt.evolve))
+    opt.previous_hyp_path = None
+    previous_hyp_path = os.path.join(opt.save_dir, 'hyp.yaml')
+    if os.path.exists(previous_hyp_path):
+        # with open(previous_hyp_path) as f:
+        #     previous_hyp = yaml.load(f, Loader=yaml.SafeLoader)
+        # hyp, unmatched_configs = check_opts(
+        #     opt=hyp, custom_cfg=previous_hyp, data_path=unmatched_configs['path_to_data'])
+        opt.previous_hyp_path = previous_hyp_path
 
     opt, unmatched_configs = check_opts(
-        opt=opt, custom_cfg=unmatched_configs, data_path=unmatched_configs['path_to_data'])
+        opt=opt, custom_cfg=unmatched_configs, data_path=path_to_data)
 
     # ==================================================================================================================
     # === DDP mode
@@ -672,6 +713,13 @@ if __name__ == '__main__':
     # ==================================================================================================================
     with open(opt.hyp) as f:
         hyp = argparse.Namespace(**yaml.load(f, Loader=yaml.SafeLoader))
+
+    if opt.previous_hyp_path is not None:
+        with open(opt.previous_hyp_path) as f:
+            previous_hyp = argparse.Namespace(**yaml.load(f, Loader=yaml.SafeLoader))
+        hyp, _ = check_opts(
+            opt=hyp, custom_cfg=vars(previous_hyp), data_path=path_to_data)
+
     hyp, unmatched_configs = check_opts(
         opt=hyp, custom_cfg=unmatched_configs, data_path=path_to_data)
     hyp = vars(hyp)
