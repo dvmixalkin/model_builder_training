@@ -5,16 +5,17 @@ def unet_manager(in_channels, classes):
     try:
         from unet import unet
         bilinear = False
-        weights_path = '../converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899/58d3ebdb-ba6c-4bec-a9fb-66195abb7f00/weights/best_dice.pth'
-        checkpoint = torch.load(weights_path)
+        weights_path = '../converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899/train_model/58d3ebdb-ba6c-4bec-a9fb-66195abb7f00/weights/best_dice.pth'
+        checkpoint = torch.load(weights_path, map_location='cpu')
         weight = checkpoint['net']['outc.conv.weight']
         net = unet.UNet(n_channels=in_channels, n_classes=classes, bilinear=bilinear)
 
+        n_classes = len(classes)
         print(weight.shape[0])
-        if weight.shape[0] != classes:
+        if weight.shape[0] != n_classes:
             # manage weights
             # class added or removed?
-            if weight.shape[0] > classes:
+            if weight.shape[0] > n_classes:
                 # class removed - detect removed class and remove corresponded neuron weight
                 pass
             else:
@@ -38,7 +39,7 @@ def yolov7_manager(weights_path):
 
 
 def main():
-    in_channels, classes = 3, 3
+    in_channels, classes = 3, ['1', '2', '3']
     unet_manager(in_channels, classes)
     pass
 
