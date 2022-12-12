@@ -12,7 +12,7 @@ configs = {
         'help': 'dir to store experiment artifacts'
     },
     {
-        'key': 'classes',
+        'key': 'n_classes',
         'type': int,
         'default': 2,
         'help': 'Number of classes'
@@ -20,7 +20,7 @@ configs = {
     {
         'key': 'class_names',
         'type': list,
-        'default': [],
+        'default': ['background', 'cab'],
         'help': 'class names'
     },
     {
