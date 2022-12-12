@@ -82,12 +82,32 @@ def train_net(net,
     # 1. Create dataset
     if img_size is None:
         img_size = [1500, 300]
+
+    # =================================--> WORKING_AREA <--=============================================================
+    def manage_classes(annotation_data):
+        machine_mapper = annotation_data['configs']['machine_mapper']
+        if 'background' not in machine_mapper:
+            if min(machine_mapper.values()) == 0:
+                machine_mapper = {k:v+1 for k, v in machine_mapper.items()}
+                machine_mapper['background'] = 0
+
+        human_mapper = annotation_data['configs']['human_mapper']
+
+        for keys in list(set(human_mapper.values())):
+
+
+        annotation_data['configs']['machine_mapper']
+
+        return machine_mapper
+    managed_classes = manage_classes(annotation_data)
+    # =================================--> WORKING_AREA <--=============================================================
+
     train_set = create_dataset(
-        dir_img, dir_mask, pickle_data=list(annotation_data['train'].keys()),
+        dir_img, dir_mask, pickle_data=annotation_data['train'],
         version=2, img_scale=1., img_size=img_size
     )
     val_set = create_dataset(
-        dir_img, dir_mask, pickle_data=list(annotation_data['val'].keys()),
+        dir_img, dir_mask, pickle_data=annotation_data['val'],
         version=2, img_scale=1., img_size=img_size
     )
 
@@ -199,7 +219,7 @@ def train_net(net,
             checkpoint_struct = {
                 'img_size': img_size,
                 'input_channels': net.n_channels,
-                'classes': net.n_classes,
+                'class_names': net.class_names,
                 'epoch': epoch,
                 'dice_score': score,
                 'learning_rate': optimizer.param_groups[0]['lr'],
@@ -221,8 +241,7 @@ def get_args():
                         default='../converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899',
                         help='dir to store model artifacts')
     parser.add_argument('--name', type=str, default='', help='Name of experiment')
-    parser.add_argument('--classes', '-c', type=int, default=2, help='Number of classes')
-    parser.add_argument('--class-names', type=list, default=[], help='class names')
+    parser.add_argument('--names', type=list, default=['background', 'cab'], help='Class names')
 
     parser.add_argument('--inp-channels', type=int, default=1, help='Number of input channels')
     # parser.add_argument('--load', '-f', type=str, default=False, help='Load model from a .pth file')
@@ -253,6 +272,9 @@ if __name__ == '__main__':
         customer_cfgs = argparse.Namespace(**yaml.load(f, Loader=yaml.SafeLoader))
     args, unmatched_configs = check_opts(opt=args, custom_cfg=vars(customer_cfgs))
 
+    name_list = ['background']
+    name_list.extend(args.names)
+    args.names = name_list
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -262,8 +284,8 @@ if __name__ == '__main__':
     # Change here to adapt to your data
     # n_channels=3 for RGB images
     # n_classes is the number of probabilities you want to get per pixel
-    net = UNet(n_channels=args.inp_channels, n_classes=args.classes, bilinear=args.bilinear)
-
+    net = UNet(n_channels=args.inp_channels, n_classes=len(args.names), bilinear=args.bilinear)
+    net.class_names = args.names
     logging.info(f'Network:\n'
                  f'\t{net.n_channels} input channels\n'
                  f'\t{net.n_classes} output channels (classes)\n'
@@ -279,17 +301,23 @@ if __name__ == '__main__':
         weights_path = f'{working_dir}/weights'
         file_paths = glob.glob(f'{weights_path}/checkpoint_epoch*.pth')
         indexes = [int(str(Path(f).stem).strip('checkpoint_epoch')) for f in file_paths]
-        last_weight_path = file_paths[indexes.index(max(indexes))]
-        checkpoint = torch.load(last_weight_path, map_location='cpu')
+        try:
+            last_weight_path = file_paths[indexes.index(max(indexes))]
+            checkpoint = torch.load(last_weight_path, map_location='cpu')
 
-        args.img_size = checkpoint['img_size']
-        args.start_epoch = checkpoint['epoch']
-        args.lr = checkpoint['learning_rate']
-        assert checkpoint['input_channels'] == args.inp_channels, 'Channels num mismatch'
-        assert checkpoint['classes'] == args.classes, 'Classes num mismatch'
+            args.img_size = checkpoint['img_size']
+            args.start_epoch = checkpoint['epoch']
+            args.lr = checkpoint['learning_rate']
+            assert checkpoint['input_channels'] == args.inp_channels, 'Channels num mismatch'
 
-        net.load_state_dict(checkpoint['net'])
-        logging.info(f'Model loaded from {last_weight_path}')
+            if checkpoint['class_names'] != net.class_names:
+                # @TODO weights = weights_manager(in_channels, classes)
+                raise NotImplemented('model class_names mismatch')
+            net.load_state_dict(checkpoint['net'])
+            logging.info(f'Model loaded from {last_weight_path}')
+
+        except Exception as e:
+            print(f'{e} - No weights found to resume training')
 
     net.to(device=device)
     try:
