@@ -18,6 +18,12 @@ configs = {
         'help': 'Number of classes'
     },
     {
+        'key': 'class_names',
+        'type': list,
+        'default': [],
+        'help': 'class names'
+    },
+    {
         'key': 'inp-channels',
         'type': int,
         'default': 1,

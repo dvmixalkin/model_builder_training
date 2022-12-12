@@ -222,6 +222,8 @@ def get_args():
                         help='dir to store model artifacts')
     parser.add_argument('--name', type=str, default='', help='Name of experiment')
     parser.add_argument('--classes', '-c', type=int, default=2, help='Number of classes')
+    parser.add_argument('--class-names', type=list, default=[], help='class names')
+
     parser.add_argument('--inp-channels', type=int, default=1, help='Number of input channels')
     # parser.add_argument('--load', '-f', type=str, default=False, help='Load model from a .pth file')
     parser.add_argument('--resume', type=bool, default=True, help='Load model from a .pth file')
