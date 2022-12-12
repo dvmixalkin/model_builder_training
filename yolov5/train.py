@@ -538,7 +538,7 @@ def parse_opt(known=False):
     parser.add_argument('--batch-size', type=int, default=8, help='total batch size for all GPUs, -1 for autobatch')
     parser.add_argument('--imgsz', '--img', '--img-size', type=int, default=640, help='train, val image size (pixels)')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
-    parser.add_argument('--resume', nargs='?', const=True, default=False, help='resume most recent training')
+    parser.add_argument('--resume', nargs='?', const=True, default=True, help='resume most recent training')
     parser.add_argument('--nosave', action='store_true', help='only save final checkpoint')
     parser.add_argument('--noval', action='store_true', help='only validate final epoch')
     parser.add_argument('--noautoanchor', action='store_true', help='disable AutoAnchor')
@@ -582,14 +582,16 @@ def main(opt, unmatched_configs, callbacks=Callbacks()):
         check_requirements(exclude=['thop'])
 
     # Resume
-    if opt.resume and not check_wandb_resume(opt) and not opt.evolve:  # resume an interrupted run
+    # if opt.resume and not check_wandb_resume(opt) and not opt.evolve:  # resume an interrupted run
+    try:
         ckpt = opt.resume if isinstance(opt.resume, str) else get_latest_run()  # specified or most recent path
         assert os.path.isfile(ckpt), 'ERROR: --resume checkpoint does not exist'
         with open(Path(ckpt).parent.parent / 'opt.yaml', errors='ignore') as f:
             opt = argparse.Namespace(**yaml.safe_load(f))  # replace
         opt.cfg, opt.weights, opt.resume = '', ckpt, True  # reinstate
         LOGGER.debug(f'Resuming training from {ckpt}')
-    else:
+    # else:
+    except:
         opt.data, opt.cfg, opt.hyp, opt.weights, opt.project = \
             check_file(opt.data), check_yaml(opt.cfg), check_yaml(opt.hyp), str(opt.weights), str(opt.project)  # checks
         assert len(opt.cfg) or len(opt.weights), 'either --cfg or --weights must be specified'
@@ -599,7 +601,8 @@ def main(opt, unmatched_configs, callbacks=Callbacks()):
             opt.exist_ok, opt.resume = opt.resume, False  # pass resume to exist_ok and disable resume
         if opt.name == 'cfg':
             opt.name = Path(opt.cfg).stem  # use model.yaml as name
-        opt.save_dir = str(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))
+        # opt.save_dir = str(increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok))
+        opt.save_dir = str(Path(Path(opt.project) / opt.name))
 
     # DDP mode
     device = select_device(opt.device, batch_size=opt.batch_size)
@@ -723,12 +726,10 @@ if __name__ == "__main__":
     unmatched_configs = None
     opt = parse_opt()
     global path_to_data
-    # path_to_data = '../data'
-    # if not os.path.exists(path_to_data):
-        # path_to_data = '../../datasets/data'
-    path_to_data = '/usr/src/converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899'
+    # path_to_data = '/usr/src/converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899'
+    path_to_data = '../converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899'
     loggerName = path_to_data.split(os.path.sep)[-1]
     LOGGER.name = loggerName
-        # '/home/home/PycharmProjects/models-mixalkin/converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899/train_target_files'
+
     opt, unmatched_configs = check_opts(opt, f'{path_to_data}/train_settings.yaml', path_to_data)
     main(opt, unmatched_configs)
