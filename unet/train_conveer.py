@@ -1,5 +1,6 @@
 import argparse
 import logging
+import random
 import sys
 from pathlib import Path
 import pickle
@@ -15,6 +16,7 @@ from utils.data_loading import BasicDataset, CarvanaDataset
 from utils.dice_score import dice_loss
 from evaluate import evaluate
 from unet import UNet
+from conveer.weights_manager import unet_manager
 
 
 def create_dataset_v1(dir_img, dir_mask, img_scale):
@@ -41,13 +43,6 @@ def create_dataset(dir_img_, dir_mask_, pickle_data, version=1, img_scale=1., im
         return create_dataset_v2(dir_img_, dir_mask_, pickle_data, img_size=img_size)
     else:
         raise NotImplemented
-
-
-def create_splits(dataset, val_percent):
-    n_val = int(len(dataset) * val_percent)
-    n_train = len(dataset) - n_val
-    train_set, val_set = random_split(dataset, [n_train, n_val], generator=torch.Generator().manual_seed(0))
-    return {'len': n_train, 'set': train_set}, {'len': n_val, 'set': val_set}
 
 
 def create_dataloaders(train_set, val_set, batch_size, num_workers):
@@ -83,25 +78,6 @@ def train_net(net,
     if img_size is None:
         img_size = [1500, 300]
 
-    # =================================--> WORKING_AREA <--=============================================================
-    def manage_classes(annotation_data):
-        machine_mapper = annotation_data['configs']['machine_mapper']
-        if 'background' not in machine_mapper:
-            if min(machine_mapper.values()) == 0:
-                machine_mapper = {k:v+1 for k, v in machine_mapper.items()}
-                machine_mapper['background'] = 0
-
-        human_mapper = annotation_data['configs']['human_mapper']
-
-        for keys in list(set(human_mapper.values())):
-
-
-        annotation_data['configs']['machine_mapper']
-
-        return machine_mapper
-    managed_classes = manage_classes(annotation_data)
-    # =================================--> WORKING_AREA <--=============================================================
-
     train_set = create_dataset(
         dir_img, dir_mask, pickle_data=annotation_data['train'],
         version=2, img_scale=1., img_size=img_size
@@ -111,10 +87,7 @@ def train_net(net,
         version=2, img_scale=1., img_size=img_size
     )
 
-    # 2. Split into train / validation partitions
-    # train_set, val_set = create_splits(dataset, val_percent)
-
-    # 3. Create data loaders
+    # 2. Create data loaders
     train_loader, val_loader = create_dataloaders(train_set, val_set, batch_size, num_workers)
 
     # (Initialize logging)
@@ -135,14 +108,14 @@ def train_net(net,
         Mixed Precision: {amp}
     ''')
 
-    # 4. Set up the optimizer, the loss, the learning rate scheduler and the loss scaling for AMP
+    # 3. Set up the optimizer, the loss, the learning rate scheduler and the loss scaling for AMP
     optimizer = optim.RMSprop(net.parameters(), lr=learning_rate, weight_decay=1e-8, momentum=0.9)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=2)  # goal: maximize Dice score
     grad_scaler = torch.cuda.amp.GradScaler(enabled=amp)
     criterion = nn.CrossEntropyLoss()
     global_step = 0
 
-    # 5. Begin training
+    # 4. Begin training
     epoch_score = 0
     for epoch in range(start_epoch, epochs + 1):
         net.train()
@@ -238,9 +211,10 @@ def train_net(net,
 def get_args():
     parser = argparse.ArgumentParser(description='Train the UNet on images and target masks')
     parser.add_argument('--working-dir', type=str,
-                        default='../converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899',
+                        default='converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899',
                         help='dir to store model artifacts')
-    parser.add_argument('--name', type=str, default='', help='Name of experiment')
+    parser.add_argument('--name', type=str, default='58d3ebdb-ba6c-4bec-a9fb-66195abb7f00',
+                        help='Name of experiment')
     parser.add_argument('--names', type=list, default=['background', 'cab'], help='Class names')
 
     parser.add_argument('--inp-channels', type=int, default=1, help='Number of input channels')
@@ -273,7 +247,9 @@ if __name__ == '__main__':
     args, unmatched_configs = check_opts(opt=args, custom_cfg=vars(customer_cfgs))
 
     name_list = ['background']
-    name_list.extend(args.names)
+    names = [name_ for name_ in args.names if name_ != 'background']
+    names.sort()
+    name_list.extend(names)
     args.names = name_list
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
@@ -297,27 +273,7 @@ if __name__ == '__main__':
     working_dir = f'{args.working_dir}/{args.name}'
     args.start_epoch = 0
     if args.resume:
-        import glob
-        weights_path = f'{working_dir}/weights'
-        file_paths = glob.glob(f'{weights_path}/checkpoint_epoch*.pth')
-        indexes = [int(str(Path(f).stem).strip('checkpoint_epoch')) for f in file_paths]
-        try:
-            last_weight_path = file_paths[indexes.index(max(indexes))]
-            checkpoint = torch.load(last_weight_path, map_location='cpu')
-
-            args.img_size = checkpoint['img_size']
-            args.start_epoch = checkpoint['epoch']
-            args.lr = checkpoint['learning_rate']
-            assert checkpoint['input_channels'] == args.inp_channels, 'Channels num mismatch'
-
-            if checkpoint['class_names'] != net.class_names:
-                # @TODO weights = weights_manager(in_channels, classes)
-                raise NotImplemented('model class_names mismatch')
-            net.load_state_dict(checkpoint['net'])
-            logging.info(f'Model loaded from {last_weight_path}')
-
-        except Exception as e:
-            print(f'{e} - No weights found to resume training')
+        net, args = unet_manager(args, net, logging)
 
     net.to(device=device)
     try:
