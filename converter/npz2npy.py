@@ -5,6 +5,7 @@ import os
 import argparse
 from pathlib import Path
 from PIL import Image
+from tqdm import tqdm
 
 
 def get_data(
@@ -113,7 +114,7 @@ def main_loop():
 
     converter = Converter(root_folder=root_folder)
 
-    for im in [file for file in os.listdir(im_fldr_path) if '.npz' in file]:
+    for im in tqdm([file for file in os.listdir(im_fldr_path) if '.npz' in file]):
         npz_bytes, save_path = get_data(
             root_folder='model_forge',
             train_name='f2e4a3a6-f9d7-49fc-a9da-79fb325c3899',
