@@ -14,6 +14,7 @@ import shapely
 from rasterio import features
 from shapely.geometry import Polygon
 from PIL import Image
+from tqdm import tqdm
 
 
 def mask2poly(mask):
@@ -156,9 +157,12 @@ class Pickler:
         intersected_names = list(set(npy_files).intersection(set(json_files)))
         # if set(npy_files) == set(json_files):
         if len(intersected_names) > 0:
-            class_mapper = {}
+            class_names = list(set(classes_map.values()))
+            class_names.sort()
+            class_mapper = {name: idx for idx, name in enumerate(class_names)}
+
             cumulative_dict = {'train': {}, 'val': {}, 'configs': None}
-            for filename in intersected_names:
+            for filename in tqdm(intersected_names):
                 npy_file = os.path.join(npy_folder, npy_dict[filename]['original_name'] + data_ext)
                 height, width = npy_dict[filename]['size']
                 json_file = os.path.join(annotation, filename + anno_ext)
@@ -170,8 +174,6 @@ class Pickler:
                     cls_name = lbl
                     if self.general_classes:
                         cls_name = classes_map[lbl]
-                    if cls_name not in class_mapper:
-                        class_mapper[cls_name] = len(class_mapper)
                     cls_id = class_mapper[cls_name]
                     polygon = Polygon(polygon)
                     mask += poly2mask(polygon, [height, width]) * (cls_id + 1)
