@@ -19,7 +19,7 @@ def get_args():
     parser = argparse.ArgumentParser(description='Predict masks from input images')
     parser.add_argument('--model', '-m',
                         # default='checkpoints/checkpoint_epoch50.pth',
-                        default='checkpoints/best_dice.pth',
+                        default='../checkpoints/best_dice.pth',
                         metavar='FILE',
                         help='Specify the file in which the model is stored')
     parser.add_argument('--img-size', type=list, default=[1500, 300], help='image input size')
@@ -33,7 +33,7 @@ def get_args():
     parser.add_argument('--no-save', '-n', action='store_true', help='Do not save the output masks')
     parser.add_argument('--mask-threshold', '-t', type=float, default=0.5,
                         help='Minimum probability value to consider a mask pixel white')
-    parser.add_argument('--scale', '-s', type=float, default=0.5,
+    parser.add_argument('--scale', '-s', type=float, default=1.,
                         help='Scale factor for the input images')
     parser.add_argument('--bilinear', action='store_true', default=False, help='Use bilinear upsampling')
 
@@ -161,10 +161,6 @@ def vis_boxes(image, coordinates):
 if __name__ == '__main__':
     args = get_args()
     in_files = args.input
-    # in_files = [
-    #     '../converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899/train_target_files/0e21bd92-3d51-4472-be5f-3a2ee4f17fa7_height_1345_width_5484.npy'
-    # ]
-    # args.input = in_files
     out_files = get_output_filenames(args)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -174,7 +170,7 @@ if __name__ == '__main__':
         img_size = checkpoint['img_size']
         weights = checkpoint['net']
         input_channels = checkpoint['input_channels']
-        classes = checkpoint['classes']
+        classes = checkpoint['class_names']
 
     except Exception as e:
         print(e)
@@ -183,7 +179,7 @@ if __name__ == '__main__':
         input_channels = args.inp_channels
         classes = args.classes
 
-    net = UNet(n_channels=input_channels, n_classes=classes, bilinear=args.bilinear)
+    net = UNet(n_channels=input_channels, n_classes=len(classes), bilinear=args.bilinear)
 
     logging.info(f'Loading model {args.model}')
     net.load_state_dict(weights)
