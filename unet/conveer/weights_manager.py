@@ -51,18 +51,21 @@ def unet_manager(args, net, logging):
     weights_path = f'{working_dir}/weights'
     file_paths = glob.glob(f'{weights_path}/checkpoint_epoch*.pth')
     indexes = [int(str(Path(f).stem).strip('checkpoint_epoch')) for f in file_paths]
-    weight_path = file_paths[indexes.index(max(indexes))]
-    checkpoint = torch.load(weight_path, map_location='cpu')
+    try:
+        weight_path = file_paths[indexes.index(max(indexes))]
+        checkpoint = torch.load(weight_path, map_location='cpu')
 
-    if args.img_size != checkpoint['img_size']:
-        logging.info(f'input image_size changed from {args.img_size} to {checkpoint["img_size"]}')
-        args.img_size = checkpoint['img_size']
-    args.start_epoch = checkpoint['epoch']
-    # args.lr = checkpoint['learning_rate']
-    assert checkpoint['input_channels'] == args.inp_channels, 'Channels num mismatch'
+        if args.img_size != checkpoint['img_size']:
+            logging.info(f'input image_size changed from {args.img_size} to {checkpoint["img_size"]}')
+            args.img_size = checkpoint['img_size']
+        args.start_epoch = checkpoint['epoch']
+        # args.lr = checkpoint['learning_rate']
+        assert checkpoint['input_channels'] == args.inp_channels, 'Channels num mismatch'
 
-    net = weights_manager(net, checkpoint)
-    logging.info(f'Model loaded from {weight_path}')
+        net = weights_manager(net, checkpoint)
+        logging.info(f'Model loaded from {weight_path}')
+    except Exception as e:
+        print(e)
     return net, args
 
 
