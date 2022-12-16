@@ -666,7 +666,7 @@ if __name__ == '__main__':
         opt.cfg = ''
         opt.weights = ckpt
         opt.resume = True
-        opt.batch_size = opt.total_batch_size
+        # opt.batch_size = opt.total_batch_size
         opt.global_rank, opt.local_rank = apriori  # reinstate
         logger.info('Resuming training from %s' % ckpt)
     # --> else:
@@ -686,10 +686,6 @@ if __name__ == '__main__':
     opt.previous_hyp_path = None
     previous_hyp_path = os.path.join(opt.save_dir, 'hyp.yaml')
     if os.path.exists(previous_hyp_path):
-        # with open(previous_hyp_path) as f:
-        #     previous_hyp = yaml.load(f, Loader=yaml.SafeLoader)
-        # hyp, unmatched_configs = check_opts(
-        #     opt=hyp, custom_cfg=previous_hyp, data_path=unmatched_configs['path_to_data'])
         opt.previous_hyp_path = previous_hyp_path
 
     opt, unmatched_configs = check_opts(
