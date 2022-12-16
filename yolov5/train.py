@@ -45,18 +45,16 @@ from utils.autoanchor import check_anchors
 from utils.autobatch import check_train_batch_size
 from utils.callbacks import Callbacks
 from utils.dataloaders import create_dataloader
-from utils.downloads import attempt_download
 from utils.general import (LOGGER, check_amp, check_dataset, check_file, check_git_status, check_img_size,
                            check_requirements, check_suffix, check_version, check_yaml, colorstr, get_latest_run,
-                           increment_path, init_seeds, intersect_dicts, labels_to_class_weights,
+                           init_seeds, intersect_dicts, labels_to_class_weights,
                            labels_to_image_weights, methods, one_cycle, print_args, print_mutation, strip_optimizer)
 from utils.loggers import Loggers
-from utils.loggers.wandb.wandb_utils import check_wandb_resume
 from utils.loss import ComputeLoss
 from utils.metrics import fitness
 from utils.plots import plot_evolve, plot_labels
 from utils.torch_utils import EarlyStopping, ModelEMA, de_parallel, select_device, torch_distributed_zero_first
-from dev_yolov5.opt_checker import check_opts
+from yolov5.conveer.opt_checker import check_opts
 
 import json
 
@@ -80,7 +78,7 @@ def train(hyp, opt, unmatched_configs, device, callbacks):  # hyp is path/to/hyp
     if isinstance(hyp, str):
         with open(hyp, errors='ignore') as f:
             hyp = yaml.safe_load(f)  # load hyps dict
-    hyp, unmatched_configs = check_opts(hyp, unmatched_configs)
+    hyp, unmatched_configs = check_opts(opt=hyp, custom_cfg=unmatched_configs, version=1)
 
     LOGGER.debug(colorstr('hyperparameters: ') + ', '.join(f'{k}={v}' for k, v in hyp.items()))
 
@@ -111,7 +109,7 @@ def train(hyp, opt, unmatched_configs, device, callbacks):  # hyp is path/to/hyp
     with torch_distributed_zero_first(LOCAL_RANK):
         data_dict = data_dict or check_dataset(data)  # check if None
 
-    data_dict, unmatched_configs = check_opts(data_dict, unmatched_configs, path_to_data)
+    data_dict, unmatched_configs = check_opts(opt=data_dict, custom_cfg=unmatched_configs, version=1)
 
     train_path, val_path = data_dict['train'], data_dict['val']
 
@@ -218,8 +216,8 @@ def train(hyp, opt, unmatched_configs, device, callbacks):  # hyp is path/to/hyp
 
         # Epochs
         start_epoch = ckpt['epoch'] + 1
-        if resume:
-            assert start_epoch > 0, f'{weights} training to {epochs} epochs is finished, nothing to resume.'
+        # if resume:
+        #     assert start_epoch > 0, f'{weights} training to {epochs} epochs is finished, nothing to resume.'
         if epochs < start_epoch:
             LOGGER.debug(f"{weights} has been trained for {ckpt['epoch']} epochs. Fine-tuning for {epochs} more epochs.")
             epochs += ckpt['epoch']  # finetune additional epochs
@@ -347,7 +345,7 @@ def train(hyp, opt, unmatched_configs, device, callbacks):  # hyp is path/to/hyp
         pbar = enumerate(train_loader)
         LOGGER.debug(('\n' + '%10s' * 7) % ('Epoch', 'gpu_mem', 'box', 'obj', 'cls', 'labels', 'img_size'))
         if RANK in {-1, 0}:
-            pbar = tqdm(pbar, total=nb, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}', disable=True)  # progress bar
+            pbar = tqdm(pbar, total=nb, bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}', disable=False)  # True progress bar
         optimizer.zero_grad()
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
             callbacks.run('on_train_batch_start')
@@ -463,6 +461,7 @@ def train(hyp, opt, unmatched_configs, device, callbacks):  # hyp is path/to/hyp
             if (not nosave) or (final_epoch and not evolve):  # if save
                 ckpt = {
                     'epoch': epoch,
+                    'img_size': imgsz,
                     'best_fitness': best_fitness,
                     'model': deepcopy(de_parallel(model)).half(),
                     'ema': deepcopy(ema.ema).half(),
@@ -584,7 +583,7 @@ def main(opt, unmatched_configs, callbacks=Callbacks()):
     # Resume
     # if opt.resume and not check_wandb_resume(opt) and not opt.evolve:  # resume an interrupted run
     try:
-        ckpt = opt.resume if isinstance(opt.resume, str) else get_latest_run()  # specified or most recent path
+        ckpt = opt.resume if isinstance(opt.resume, str) else get_latest_run(search_dir=opt.project)  # specified or most recent path
         assert os.path.isfile(ckpt), 'ERROR: --resume checkpoint does not exist'
         with open(Path(ckpt).parent.parent / 'opt.yaml', errors='ignore') as f:
             opt = argparse.Namespace(**yaml.safe_load(f))  # replace
@@ -730,6 +729,6 @@ if __name__ == "__main__":
     path_to_data = '../converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899'
     loggerName = path_to_data.split(os.path.sep)[-1]
     LOGGER.name = loggerName
-
-    opt, unmatched_configs = check_opts(opt, f'{path_to_data}/train_settings.yaml', path_to_data)
+    custom_cfg = f'{path_to_data}/train_settings.yaml'
+    opt, unmatched_configs = check_opts(opt=opt, custom_cfg=custom_cfg, version=1, path_to_data=path_to_data)
     main(opt, unmatched_configs)
