@@ -91,8 +91,7 @@ def set_logging(name=None, verbose=VERBOSE):
     log = logging.getLogger(name)
     log.setLevel(level)
     handler = logging.StreamHandler()
-    handler = SocketHandler(server='192.168.108.118',
-                            port='8008')
+    # handler = SocketHandler(server='192.168.108.118', port='8008')
     # handler.setFormatter(logging.Formatter("%(message)s"))
     handler.setLevel(level)
     log.addHandler(handler)
