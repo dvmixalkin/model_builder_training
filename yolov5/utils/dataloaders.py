@@ -33,8 +33,8 @@ from utils.torch_utils import torch_distributed_zero_first
 
 import sys
 
-from dev.auxilary_utils import parse_json_file as d_parse_json_file
-from dev.utils import load_npz
+from conveer.auxilary_utils import parse_json_file as d_parse_json_file
+from conveer.utils import load_npz
 
 # Parameters
 HELP_URL = 'https://github.com/ultralytics/yolov5/wiki/Train-Custom-Data'
