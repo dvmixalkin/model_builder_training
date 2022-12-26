@@ -59,14 +59,15 @@ def train_net(net,
               img_size: list = None,  # Width, Height
               batch_size: int = 1,
               learning_rate: float = 1e-5,
+              weight_decay: float = 1e-8,
+              momentum: float = 0.9,
               # val_percent: float = 0.1,
               save_checkpoint: bool = True,
               img_scale: float = 0.5,
               amp: bool = False,
               num_workers: int = 0,  # @TODO change back to 4 num workers
               working_dir: str = None):
-
-    parent_dir = Path(working_dir).parent
+    parent_dir = Path(working_dir).parent.parent
     dir_img = Path(f'{parent_dir}/train_target_files')
     dir_mask = Path(f'{parent_dir}/annotations')
     dir_checkpoint = Path(f'{working_dir}/weights/')
@@ -100,6 +101,8 @@ def train_net(net,
         Epochs:          {epochs}
         Batch size:      {batch_size}
         Learning rate:   {learning_rate}
+        Weight decay:    {weight_decay}
+        Momentum:        {momentum}
         Training size:   {len(train_set.image_paths)}
         Validation size: {len(val_set.image_paths)}
         Checkpoints:     {save_checkpoint}
@@ -109,7 +112,8 @@ def train_net(net,
     ''')
 
     # 3. Set up the optimizer, the loss, the learning rate scheduler and the loss scaling for AMP
-    optimizer = optim.RMSprop(net.parameters(), lr=learning_rate, weight_decay=1e-8, momentum=0.9)
+    optimizer = optim.RMSprop(net.parameters(), lr=learning_rate,
+                              weight_decay=weight_decay, momentum=momentum)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'max', patience=2)  # goal: maximize Dice score
     grad_scaler = torch.cuda.amp.GradScaler(enabled=amp)
     criterion = nn.CrossEntropyLoss()
@@ -135,10 +139,13 @@ def train_net(net,
 
                 with torch.cuda.amp.autocast(enabled=amp):
                     masks_pred = net(images)
-                    loss = criterion(masks_pred, true_masks) \
-                           + dice_loss(F.softmax(masks_pred, dim=1).float(),
-                                       F.one_hot(true_masks, net.n_classes).permute(0, 3, 1, 2).float(),
-                                       multiclass=True)
+                    criterion_loss = criterion(masks_pred, true_masks)
+                    dice_loss_value = dice_loss(
+                        F.softmax(masks_pred, dim=1).float(),
+                        F.one_hot(true_masks, net.n_classes).permute(0, 3, 1, 2).float(),
+                        multiclass=True
+                    )
+                    loss = criterion_loss + dice_loss_value
 
                 optimizer.zero_grad(set_to_none=True)
                 grad_scaler.scale(loss).backward()
@@ -211,7 +218,7 @@ def train_net(net,
 def get_args():
     parser = argparse.ArgumentParser(description='Train the UNet on images and target masks')
     parser.add_argument('--working-dir', type=str,
-                        default='converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899',
+                        default='converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899_unet',
                         help='dir to store model artifacts')
     parser.add_argument('--name', type=str, default='58d3ebdb-ba6c-4bec-a9fb-66195abb7f00',
                         help='Name of experiment')
@@ -225,8 +232,10 @@ def get_args():
     parser.add_argument('--batch-size', '-b', dest='batch_size', metavar='B', type=int, default=3, help='Batch size')
     parser.add_argument('--img-size', type=list, default=[1500, 300], help='image input size')
 
-    parser.add_argument('--learning-rate', '-l', metavar='LR', type=float, default=1e-5,
-                        help='Learning rate', dest='lr')
+    parser.add_argument('--learning-rate', '-lr', type=float, default=1e-5, help='Learning rate')
+    parser.add_argument('--weight_decay', type=float, default=1e-8, help='Weight decay')
+    parser.add_argument('--momentum', type=float, default=0.9, help='Momentum')
+
     parser.add_argument('--scale', '-s', type=float, default=0.5, help='Downscaling factor of the images')
     # parser.add_argument('--validation', '-v', dest='val', type=float, default=10.0,
     #                     help='Percent of the data that is used as validation (0-100)')
@@ -241,6 +250,7 @@ if __name__ == '__main__':
 
     from conveer.opt_checker import check_opts
     import yaml
+
     # get name to find latest run
     with open(f'{args.working_dir}/train_settings.yaml') as f:
         customer_cfgs = argparse.Namespace(**yaml.load(f, Loader=yaml.SafeLoader))
@@ -270,7 +280,7 @@ if __name__ == '__main__':
     # if args.load:
     #     net.load_state_dict(torch.load(args.load, map_location=device))
     #     logging.info(f'Model loaded from {args.load}')
-    working_dir = f'{args.working_dir}/{args.name}'
+    working_dir = f'{args.working_dir}/train_model/{args.name}'
     args.start_epoch = 0
     if args.resume:
         net, args = unet_manager(args, net, logging)
@@ -282,7 +292,9 @@ if __name__ == '__main__':
                   epochs=args.epochs,
                   img_size=args.img_size,
                   batch_size=args.batch_size,
-                  learning_rate=args.lr,
+                  learning_rate=args.learning_rate,
+                  weight_decay=args.weight_decay,
+                  momentum=args.momentum,  # 0.9
                   device=device,
                   img_scale=args.scale,
                   # val_percent=args.val / 100,
