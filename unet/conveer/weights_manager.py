@@ -39,7 +39,7 @@ def weights_manager(net, checkpoint):
                                 else:
                                     continue
                         net_state_dict[key] = torch.stack(new_weights, dim=target_dim)
-        net.load_state_dict(net_state_dict)
+        net.load_state_dict(net_state_dict, strict=False)
         return net
     except Exception as e:
         print(f'{e} - No weights found to resume training')
