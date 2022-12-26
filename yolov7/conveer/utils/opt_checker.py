@@ -1,5 +1,6 @@
 import os
 import distutils
+import argparse
 
 
 def parse_yaml(path):
@@ -14,6 +15,8 @@ def get_configs(_cfg):
         configs = parse_yaml(_cfg)
     elif isinstance(_cfg, dict):
         configs = _cfg
+    elif isinstance(_cfg, argparse.Namespace):
+        configs = vars(_cfg)
     else:
         raise NotImplemented
     return configs
@@ -40,6 +43,9 @@ def parse_list(opt, k, v):
 
 def parse_types(opt, k, v):
     _type = type(getattr(opt, k))
+    if v is None:
+        print(f'ERRO: value from customer config with key {k} equals "None". Use default value "{getattr(opt, k)}"')
+        return getattr(opt, k)
     try:
         if _type == list:
             value = parse_list(opt, k, v)
@@ -74,23 +80,6 @@ def format_key_value(opt, k, v, **kwargs):
     if k in ['train', 'val'] and value == '':
         value = os.path.join(kwargs["data_path"], f'{k}_dataset.pkl')
     return value
-
-
-# def check_opts(opt, custom_cfg=None, data_path='data'):
-#     unmatched_configs = custom_cfg
-#     if custom_cfg:
-#         configs = get_configs(custom_cfg)
-#         unmatched_configs = {}
-#
-#         kwargs = {'data_path': data_path}
-#         for k, v in configs.items():
-#             k = k.replace('-', '_')
-#             if hasattr(opt, k):
-#                 value = format_key_value(opt, k, v, **kwargs)
-#                 setattr(opt, k, value)
-#             else:
-#                 unmatched_configs[k] = v
-#     return opt, unmatched_configs
 
 
 def body_v1(opt, configs, **kwargs):
@@ -129,11 +118,6 @@ def body_v2(opt, configs, **kwargs):
 
 
 def check_opts(opt, custom_cfg=None, data_path='data', version=1):
-    # if version == 1:
-    #     return check_opts_v1(opt, custom_cfg=custom_cfg, data_path=data_path)
-    # elif version == 2:
-    #     return check_opts_v2(opt, custom_cfg=custom_cfg, data_path=data_path)
-
     unmatched_configs = custom_cfg
     if custom_cfg:
         configs = get_configs(custom_cfg)
