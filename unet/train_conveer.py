@@ -218,7 +218,7 @@ def train_net(net,
 def get_args():
     parser = argparse.ArgumentParser(description='Train the UNet on images and target masks')
     parser.add_argument('--working-dir', type=str,
-                        default='converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899_unet',
+                        default='../converter/model_forge/f2e4a3a6-f9d7-49fc-a9da-79fb325c3899',
                         help='dir to store model artifacts')
     parser.add_argument('--name', type=str, default='58d3ebdb-ba6c-4bec-a9fb-66195abb7f00',
                         help='Name of experiment')
